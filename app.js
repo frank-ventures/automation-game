@@ -1,606 +1,385 @@
-(function () {
-  "use strict";
+"use strict";
 
-  /* ---------------- data ---------------- */
-  const firstNames = [
-    "Ava",
-    "Liam",
-    "Noah",
-    "Mia",
-    "Oliver",
-    "Amelia",
-    "Freya",
-    "George",
-    "Isla",
-    "Harper",
-    "Oscar",
-    "Ella",
-    "Jack",
-    "Ruby",
-    "Leo",
-    "Chloe",
-    "Finn",
-    "Poppy",
-    "Arthur",
-    "Willow",
-  ];
-  const lastNames = [
-    "Patel",
-    "Smith",
-    "Khan",
-    "O'Brien",
-    "Brown",
-    "Walker",
-    "Singh",
-    "Murphy",
-    "Jones",
-    "Garcia",
-    "Wilson",
-    "Taylor",
-    "Chen",
-    "Dawson",
-    "Hughes",
-  ];
-  const companies = [
-    "Acme Corp",
-    "Globex",
-    "Initech",
-    "Umbrella",
-    "Stark Ind.",
-    "Wayne Ent.",
-    "Soylent Co.",
-    "Hooli",
-    "Pied Piper",
-    "Wonka Inc.",
-  ];
-  const domains = ["gmail.com", "outlook.com", "company.co.uk", "work.com"];
+/* ================= TUNABLES ================= */
+const manualCards = 5;      // Act 1: cards to process by hand
+const runBatch    = 30;     // Act 3: records the bot processes
+const ACT3_STEP_MS = 900;   // Act 3: ms per item (~27s for 30)
 
-  function rand(a) {
-    return a[Math.floor(Math.random() * a.length)];
-  }
-  function shuffle(arr) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
-  function makeSignup(forcePremium) {
-    const fn = rand(firstNames),
-      ln = rand(lastNames);
-    const name = fn + " " + ln;
-    const email =
-      (fn[0] + ln).toLowerCase() +
-      "." +
-      Math.floor(Math.random() * 90 + 10) +
-      "@" +
-      rand(domains);
-    const company = rand(companies);
-    const plan = forcePremium
-      ? Math.random() < 0.4
-        ? "Premium"
-        : "Free"
-      : Math.random() < 0.5
-        ? "Premium"
-        : "Free";
+/* ================= DATA ================= */
+const FIRST = ["Amira","Ben","Chloe","Dev","Elena","Farid","Grace","Hugo","Isla","Jack","Kira","Leo","Maya","Noor","Owen","Priya","Rhys","Sana","Tom","Uma","Vik","Wren","Yusuf","Zara"];
+const LAST  = ["Patel","Kaur","Brennan","Okafor","Marsh","Ivanov","Diaz","Whitcombe","Ahmed","Novak","Suzuki","Bright","Ellison","Kone","Fischer","Reyes"];
+const COMPANIES = ["Acme Ltd","Brightpath Co","Cedar Group","Dune Analytics","Everest HR","Foxglove Ltd","GraniteOps","Hexley & Sons","Ionic Retail","Junction Foods","Kestrel Media","Lumen Care","Northwind","Orchard Legal","Pinecrest","Quillo","Ridge Bank","Sable Travel","Tessellate","Umbra Health"];
+const PLANS = ["Basic", "Pro", "Premium"];
+
+// NOTE (known quirk, kept as specified): forcePremium only NUDGES the plan
+// probability (50% vs 40%) — it does not guarantee a Premium plan.
+function makeSignup(forcePremium) {
+    const name = FIRST[Math.floor(Math.random()*FIRST.length)] + " " + LAST[Math.floor(Math.random()*LAST.length)];
+    const plan = Math.random() < (forcePremium ? 0.5 : 0.4)
+    ? "Premium"
+    : PLANS[Math.floor(Math.random()*2)]; // Basic / Pro
+    const company = COMPANIES[Math.floor(Math.random()*COMPANIES.length)];
+    const email = name.split(" ")[0].toLowerCase() + "@" + company.toLowerCase().replace(/[^a-z]/g,"") + ".co.uk";
     return { name, email, company, plan };
-  }
-  const manualCards = [
-    makeSignup(true),
-    makeSignup(true),
-    makeSignup(false),
-    makeSignup(false),
-    makeSignup(false),
-  ];
-  const runBatch = Array.from({ length: 30 }, () => makeSignup(true));
+}
 
-  /* ---------------- helpers ---------------- */
-  const $ = (s) => document.querySelector(s);
-  const $$ = (s) => Array.from(document.querySelectorAll(s));
-  function fmt(sec) {
-    sec = Math.max(0, Math.floor(sec));
-    return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
-  }
-  function flash(el, cls) {
-    el.classList.add(cls);
-    setTimeout(() => el.classList.remove(cls), 320);
-  }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+const $ = s => document.querySelector(s);
 
-  let timerId = null,
-    timerStart = 0;
-  function startTimer(el) {
-    stopTimer();
-    timerStart = Date.now();
-    const tick = () => {
-      const el2 = el || $("#hudTimer");
-      el2.textContent = fmt((Date.now() - timerStart) / 1000);
-    };
-    tick();
-    timerId = setInterval(tick, 250);
-    return {
-      stop: stopTimer,
-      elapsed: () => (Date.now() - timerStart) / 1000,
-    };
-  }
-  function stopTimer() {
-    if (timerId) {
-      clearInterval(timerId);
-      timerId = null;
-    }
-  }
+/* ================= STATE ================= */
+const state = {
+    manualCards: [], cardIndex: 0, manualErrors: 0, manualSeconds: 0,
+    timerId: null, timerStart: null,
+    botSeconds: 0, emailsSent: 0
+};
 
-  function showScreen(id) {
-    $$(".screen").forEach((s) => s.classList.remove("active"));
-    $("#" + id).classList.add("active");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+/* ================= DRAG HELPER (pointer-event based, mouse + touch) ================= */
+function makeDraggable(el, onDrop) {
+    el.addEventListener("pointerdown", e => {
+        if (e.button !== 0 && e.pointerType === "mouse") return;
+        e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        const offX = e.clientX - rect.left, offY = e.clientY - rect.top;
+        const ghost = el.cloneNode(true);
+        ghost.classList.add("drag-ghost");
+        ghost.style.width = rect.width + "px";
+        ghost.style.left = rect.left + "px";
+        ghost.style.top  = rect.top + "px";
+        document.body.appendChild(ghost);
 
-  /* ---------------- drag & drop ---------------- */
-  function zoneUnder(x, y) {
-    const el = document.elementFromPoint(x, y);
-    return el ? el.closest("[data-dropzone]") : null;
-  }
-  function makeDraggable(el, onDrop) {
-    el.addEventListener("pointerdown", function (e) {
-      if (
-        el.classList.contains("used") ||
-        el.classList.contains("placed-block")
-      )
-        return;
-      e.preventDefault();
-      const sx = e.clientX,
-        sy = e.clientY;
-      const r = el.getBoundingClientRect();
-      const offX = sx - r.left,
-        offY = sy - r.top;
-      const ghost = el.cloneNode(true);
-      ghost.classList.add("drag-ghost");
-      ghost.style.width = r.width + "px";
-      document.body.appendChild(ghost);
-      el.classList.add("dragging-src");
-      let moved = false;
-      function move(ev) {
-        if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 4)
-          moved = true;
-        ghost.style.left = ev.clientX - offX + "px";
-        ghost.style.top = ev.clientY - offY + "px";
-        const z = zoneUnder(ev.clientX, ev.clientY);
-        $$(".dropzone").forEach((dz) => dz.classList.remove("drop-hover"));
-        if (z) z.classList.add("drop-hover");
-      }
-      function up(ev) {
-        document.removeEventListener("pointermove", move);
-        document.removeEventListener("pointerup", up);
-        document.removeEventListener("pointercancel", up);
-        ghost.remove();
-        el.classList.remove("dragging-src");
-        $$(".dropzone").forEach((dz) => dz.classList.remove("drop-hover"));
-        if (!moved) {
-          onDrop(null, el);
-          return;
-        }
-        const z = zoneUnder(ev.clientX, ev.clientY);
-        onDrop(z, el);
-      }
-      move({ clientX: sx, clientY: sy });
-      document.addEventListener("pointermove", move);
-      document.addEventListener("pointerup", up);
-      document.addEventListener("pointercancel", up);
+        let currentZone = null;
+        const zoneAt = (x, y) => {
+            const t = document.elementFromPoint(x, y);
+            return t ? t.closest("[data-dropzone]") : null;
+        };
+        const move = ev => {
+            ghost.style.left = (ev.clientX - offX) + "px";
+            ghost.style.top  = (ev.clientY - offY) + "px";
+            const z = zoneAt(ev.clientX, ev.clientY);
+            if (z !== currentZone) {
+                if (currentZone) currentZone.classList.remove("over");
+                currentZone = z;
+                if (z) z.classList.add("over");
+            }
+        };
+        const up = ev => {
+            document.removeEventListener("pointermove", move);
+            document.removeEventListener("pointerup", up);
+            document.removeEventListener("pointercancel", up);
+            ghost.remove();
+            if (currentZone) currentZone.classList.remove("over");
+            onDrop(zoneAt(ev.clientX, ev.clientY), el);
+        };
+        document.addEventListener("pointermove", move);
+        document.addEventListener("pointerup", up);
+        document.addEventListener("pointercancel", up);
     });
-  }
+}
 
-  /* ================= ACT 1 : MANUAL ================= */
-  const FIELDS = [
-    ["name", "Name"],
-    ["email", "Email"],
-    ["company", "Company"],
-    ["plan", "Plan"],
-  ];
-  let mIndex = 0,
-    mErrors = 0,
-    mFilled = 0,
-    manualTimer = null;
+/* ================= ACT NAVIGATION ================= */
+function showAct(id) {
+    document.querySelectorAll("section.act").forEach(s => s.classList.toggle("active", s.id === id));
+    document.querySelectorAll(".act-tab").forEach(t => t.classList.toggle("active", t.dataset.act === id));
+}
+document.querySelectorAll(".act-tab").forEach(tab =>
+tab.addEventListener("click", () => showAct(tab.dataset.act)));
 
-  function buildManualCard() {
-    const c = manualCards[mIndex];
-    $("#cardCounter").textContent =
-      "Card " + (mIndex + 1) + " of " + manualCards.length;
-    const chips = $("#chipArea");
-    chips.innerHTML = "";
-    shuffle(FIELDS).forEach(([key, label]) => {
-      const chip = document.createElement("div");
-      chip.className = "chip";
-      chip.dataset.field = key;
-      chip.dataset.value = c[key];
-      chip.innerHTML =
-        '<div class="chip-k">' +
-        label +
-        '</div><div class="chip-v">' +
-        c[key] +
-        "</div>";
-      chips.appendChild(chip);
-      makeDraggable(chip, (zone, el) => {
-        if (!zone || !zone.classList.contains("slot")) return;
-        if (zone.classList.contains("filled")) {
-          flash(zone, "flash-warn");
-          return;
-        }
-        zone.querySelector(".slot-v").textContent = el.dataset.value;
+function unlock(actId) {
+    const tab = document.querySelector(`.act-tab[data-act="${actId}"]`);
+    if (tab) tab.disabled = false;
+}
+
+/* ================= ACT 1 — MANUAL ================= */
+const SLOT_FIELDS = ["name", "email", "company", "plan"];
+const SLOT_LABELS = { name: "Name", email: "Email", company: "Company", plan: "Plan" };
+
+function initAct1() {
+    state.manualCards = Array.from({ length: manualCards }, () => makeSignup());
+    // Fix for the known quirk: guarantee at least one Premium card in Act 1,
+    // otherwise the "Send welcome email" step may never appear.
+    if (!state.manualCards.some(c => c.plan === "Premium")) {
+        const idx = Math.floor(Math.random() * state.manualCards.length);
+        state.manualCards[idx].plan = "Premium";
+        state.manualCards[idx].email = state.manualCards[idx].email; // plan is the only change needed
+    }
+    $("#a1-total").textContent = manualCards;
+
+    $("#a1-slots").innerHTML = SLOT_FIELDS.map(f =>
+    `<div class="slot" data-dropzone="slot" data-field="${f}"><span class="slot-label">${SLOT_LABELS[f]}</span></div>`
+    ).join("");
+
+    $("#a1-save").addEventListener("click", saveManualCard);
+    $("#a1-email").addEventListener("click", () => {
+        state.welcomeSent = true;
+        $("#a1-email").disabled = true;
+        $("#a1-email").textContent = "✅ Welcome email sent";
+        updateA1Buttons();
+    });
+
+    renderManualCard();
+}
+
+function startTimer() {
+    if (state.timerStart) return;
+    state.timerStart = Date.now();
+    state.timerId = setInterval(() => {
+        state.manualSeconds = Math.round((Date.now() - state.timerStart) / 1000);
+        $("#a1-time").textContent = state.manualSeconds + "s";
+    }, 250);
+}
+
+function renderManualCard() {
+    const s = state.manualCards[state.cardIndex];
+    state.welcomeSent = false;
+    $("#a1-card").textContent = state.cardIndex + 1;
+    $("#a1-email").textContent = "📧 Send welcome email";
+    $("#a1-premium-flag").classList.toggle("hidden", s.plan !== "Premium");
+
+    // reset slots
+    document.querySelectorAll("#a1-slots .slot").forEach(sl => {
+        sl.classList.remove("filled");
+        sl.innerHTML = `<span class="slot-label">${SLOT_LABELS[sl.dataset.field]}</span>`;
+    });
+
+    // chips in RANDOM order — deliberate, creates slip/error chance
+    const fields = shuffle([...SLOT_FIELDS]);
+    const chipsEl = $("#a1-chips");
+    chipsEl.innerHTML = fields.map(f =>
+    `<div class="chip" data-field="${f}"><b>${SLOT_LABELS[f]}:</b> ${s[f]}</div>`
+    ).join("");
+    chipsEl.querySelectorAll(".chip").forEach(chip =>
+    makeDraggable(chip, (zone, src) => handleChipDrop(zone, src))
+    );
+    updateA1Buttons();
+}
+
+function handleChipDrop(zone, chip) {
+    if (!zone || zone.dataset.dropzone !== "slot") return; // dropped on nothing — ignore, no penalty
+    const s = state.manualCards[state.cardIndex];
+    const field = chip.dataset.field;
+    if (zone.dataset.field === field && !zone.classList.contains("filled")) {
+        startTimer();
         zone.classList.add("filled");
-        if (zone.dataset.slot === el.dataset.field) {
-          zone.classList.add("ok");
-        } else {
-          zone.classList.add("bad");
-          mErrors++;
-          updateManualHUD();
-        }
-        el.classList.add("used");
-        mFilled++;
-        if (mFilled === 4) $("#btnSave").disabled = false;
-      });
-    });
-    const slots = $("#slotArea");
-    slots.innerHTML = "";
-    FIELDS.forEach(([key, label]) => {
-      const s = document.createElement("div");
-      s.className = "slot dropzone";
-      s.dataset.dropzone = "";
-      s.dataset.slot = key;
-      s.innerHTML =
-        '<span class="slot-k">' +
-        label +
-        '</span><span class="slot-v">—</span>';
-      slots.appendChild(s);
-    });
-    $("#btnSave").disabled = true;
-    const em = $("#btnEmail");
-    em.className = "btn email";
-    em.disabled = false;
-    em.textContent = "✉ Send welcome email";
-    $("#btnEmail").dataset.needed = c.plan === "Premium" ? "1" : "0";
-    const left = manualCards.length - (mIndex + 1);
-    $("#stackHint").innerHTML =
-      left > 0
-        ? '<span class="mini"></span>'.repeat(Math.min(left, 4)) +
-          " &nbsp;" +
-          left +
-          " more in the queue"
-        : "Last one — good luck.";
-  }
-
-  function updateManualHUD() {
-    $("#hudCounter").textContent =
-      mIndex + " / " + manualCards.length + " · " + mErrors + " err";
-  }
-
-  $("#btnSave").addEventListener("click", function () {
-    const c = manualCards[mIndex];
-    const em = $("#btnEmail");
-    if (c.plan === "Premium" && !em.classList.contains("done")) {
-      em.classList.add("show");
-      flash(em, "flash-warn");
-      em.textContent = "✉ Premium — send welcome email first";
-      return;
-    }
-    mIndex++;
-    mFilled = 0;
-    if (mIndex >= manualCards.length) {
-      finishManual();
+        zone.innerHTML = `<span class="filled-text">${s[field]}</span>`;
+        chip.remove();
+        updateA1Buttons();
     } else {
-      buildManualCard();
-      updateManualHUD();
+        // wrong slot (or slot already filled) → error
+        state.manualErrors++;
+        $("#a1-errors").textContent = state.manualErrors;
+        chip.classList.remove("shake"); void chip.offsetWidth; chip.classList.add("shake");
     }
-  });
+}
 
-  $("#btnEmail").addEventListener("click", function () {
-    const em = this;
-    if (em.classList.contains("done")) return;
-    em.classList.add("done");
-    em.textContent = "✉ Welcome email sent ✓";
-    $("#btnSave").disabled = false;
-  });
+function updateA1Buttons() {
+    const s = state.manualCards[state.cardIndex];
+    if (!s) return;
+    const filled = document.querySelectorAll("#a1-slots .slot.filled").length;
+    const needsEmail = s.plan === "Premium" && !state.welcomeSent;
+    $("#a1-email").disabled = !(s.plan === "Premium") || state.welcomeSent;
+    $("#a1-save").disabled = filled < 4 || needsEmail;
+}
 
-  function finishManual() {
-    stopTimer();
-    const t = fmt(manualTimer.elapsed());
-    $("#hudTimer").textContent = t;
-    $("#manualDone").style.display = "block";
-    $("#manualDoneText").innerHTML =
-      "You processed <b>" +
-      manualCards.length +
-      "</b> sign-ups in <b>" +
-      t +
-      "</b> with <b>" +
-      mErrors +
-      "</b> error" +
-      (mErrors === 1 ? "" : "s") +
-      ".<br>Now let's build the automation so you don't have to.";
-    $("#actPill").textContent = "Manual done";
-    $("#manualDone").scrollIntoView({
-      behavior: "smooth",
-      block: "center",
+function saveManualCard() {
+    state.cardIndex++;
+    if (state.cardIndex >= manualCards) {
+        clearInterval(state.timerId);
+        $("#a1-done").classList.remove("hidden");
+        $("#a1-done").innerHTML = `
+        <p><b>Done.</b> ${manualCards} records in <b>${state.manualSeconds}s</b>
+        with <b>${state.manualErrors}</b> error${state.manualErrors === 1 ? "" : "s"}.</p>
+        <p>Tired of dragging? Good — that's Act 1's whole point. Now make a machine do it.</p>
+        <button class="btn primary" id="a1-next">🔧 Build the automation →</button>`;
+        $("#a1-save").disabled = true; // guard: don't let Save fire again on the last card
+        $("#a1-next").addEventListener("click", () => { unlock("act2"); showAct("act2"); });
+        return;
+    }
+    renderManualCard();
+}
+
+/* ================= ACT 2 — BUILD ================= */
+const usedBlocks = new Set();
+
+function initAct2() {
+    const zoneMain = $("#zone-main"), zoneIf = $("#zone-iftrue");
+
+    document.querySelectorAll("#palette .block").forEach(block =>
+    makeDraggable(block, (zone, src) => {
+        if (!zone) return; // dropped nowhere
+        const id = src.dataset.block;
+        if (usedBlocks.has(id)) return;
+        if (zone.querySelector(`[data-block="${id}"]`)) return;
+        const placed = document.createElement("div");
+        placed.className = "block placed";
+        placed.dataset.block = id;
+        placed.innerHTML = src.innerHTML;
+        zone.appendChild(placed);
+        usedBlocks.add(id);
+        src.classList.add("used");
+        placed.addEventListener("click", () => {
+            placed.remove();
+            usedBlocks.delete(id);
+            src.classList.remove("used");
+            validateFlow();
+        });
+        validateFlow();
+    })
+    );
+
+    $("#a2-run").addEventListener("click", () => {
+        // remember whether the optional Tag Priority block was included (affects Act 3 log)
+        state.tagPriority = usedBlocks.has("tag");
+        unlock("act3");
+        initAct3();
+        showAct("act3");
     });
-  }
 
-  $("#btnToBuild").addEventListener("click", function () {
-    showScreen("screen-build");
-    $("#actPill").textContent = "Act 2 · Build";
-    $("#hudTimerLbl").textContent = "Status";
-    $("#hudCounterLbl").textContent = "Flow";
-    $("#hudTimer").textContent = "—";
-    $("#hudCounter").textContent = "building…";
-  });
+    validateFlow();
+}
 
-  /* ================= ACT 2 : BUILD ================= */
-  $$("#palette .block").forEach((b) => {
-    makeDraggable(b, (zone, el) => {
-      if (!zone || !zone.classList.contains("zone")) return;
-      const accept = (zone.dataset.accept || "").split(",");
-      const type = el.dataset.type;
-      if (!accept.includes(type)) {
-        flash(zone, "flash-warn");
-        return;
-      }
-      const cap = parseInt(zone.dataset.cap || "1", 10);
-      if (zone.querySelectorAll(".placed-block").length >= cap) {
-        flash(zone, "flash-warn");
-        return;
-      }
-      zone.appendChild(el);
-      el.classList.add("placed-block");
-      el.style.cursor = "default";
-      updateFlowStatus();
+function validateFlow() {
+    const main = [...$("#zone-main").querySelectorAll(".placed")].map(b => b.dataset.block);
+    const ifb  = [...$("#zone-iftrue").querySelectorAll(".placed")].map(b => b.dataset.block);
+    const problems = [];
+    if (!main.includes("add-crm"))   problems.push("Add <b>Add to CRM</b> to the main path.");
+    if (!main.includes("condition")) problems.push("Add the <b>Condition</b> block to the main path.");
+    if (!ifb.includes("email"))      problems.push("Put <b>Send welcome email</b> under <i>If TRUE</i>.");
+    if (ifb.includes("condition"))   problems.push("The <b>Condition</b> belongs on the main path, not under <i>If TRUE</i>.");
+    if (main.includes("email") || main.includes("tag"))
+        problems.push("Email/tagging actions belong under <i>If TRUE</i>, not the main path.");
+    if (main.includes("archive") || ifb.includes("archive"))
+        problems.push("<b>Archive form</b> isn't part of this flow — remove it.");
+
+    const el = $("#a2-validation");
+    if (problems.length) {
+        el.innerHTML = problems.map(p => `<p class="problem">⚠ ${p}</p>`).join("");
+        $("#a2-run").disabled = true;
+    } else {
+        el.innerHTML = `<p class="ok">✅ Flow looks good${usedBlocks.has("tag") ? " (nice — you even tagged priorities)" : ""}. Run it!</p>`;
+        $("#a2-run").disabled = false;
+    }
+}
+
+/* ================= ACT 3 — RUN ================= */
+let currentRunId = 0; // guards against overlapping Act 3 runs (nav back + Run again)
+function initAct3() {
+    const runId = ++currentRunId;
+    if (state.act3TimerId) clearInterval(state.act3TimerId); // stop old run's HUD timer
+    state.emailsSent = 0; // reset: re-running Act 3 must not double-count emails
+    const queue = Array.from({ length: runBatch }, () => makeSignup());
+    const queueStack = $("#queue-stack"), pile = $("#processed-pile"), log = $("#log");
+    queueStack.innerHTML = ""; pile.innerHTML = ""; log.innerHTML = "";
+    $("#a3-done").textContent = "0"; $("#a3-emails").textContent = "0"; $("#a3-time").textContent = "0s";
+    queue.forEach((s, i) => {
+        const chip = document.createElement("div");
+        chip.className = "q-chip"; chip.dataset.id = i;
+        chip.innerHTML = `${s.name} <span class="plan plan-${s.plan}">${s.plan}</span>`;
+        queueStack.appendChild(chip);
     });
-  });
-  $$("#palette .block .cond-field, #palette .block .cond-value").forEach(
-    (sel) => {
-      sel.addEventListener("change", updateFlowStatus);
-    },
-  );
+    $("#queue-count").textContent = `(${queue.length})`;
 
-  function flowValid() {
-    const mainOk = $("#zoneMain").querySelector('[data-type="add-crm"]');
-    const condEl = $("#zoneCond").querySelector('[data-type="condition"]');
-    const condOk =
-      condEl &&
-      condEl.querySelector(".cond-field").value === "Plan" &&
-      condEl.querySelector(".cond-value").value === "Premium";
-    const emailOk = $("#zonePrem").querySelector('[data-type="send-email"]');
-    return !!(mainOk && condOk && emailOk);
-  }
-  function updateFlowStatus() {
-    const mainOk = !!$("#zoneMain").querySelector('[data-type="add-crm"]');
-    const condEl = $("#zoneCond").querySelector('[data-type="condition"]');
-    const condOk =
-      !!condEl &&
-      condEl.querySelector(".cond-field").value === "Plan" &&
-      condEl.querySelector(".cond-value").value === "Premium";
-    const emailOk = !!$("#zonePrem").querySelector('[data-type="send-email"]');
-    $("#zoneMain").classList.toggle("satisfied", mainOk);
-    $("#zoneCond").classList.toggle("satisfied", condOk);
-    $("#zonePrem").classList.toggle("satisfied", emailOk);
-    const ok = flowValid();
-    $("#btnRun").disabled = !ok;
-    $("#runHint").textContent = ok
-      ? "The flow is valid — run it."
-      : "Place the blocks to enable the run.";
-    $("#hudCounter").textContent = ok ? "ready ✓" : "building…";
-  }
+    const grid = $("#run-grid"), token = $("#token");
+    const t0 = Date.now();
+    const timerId = state.act3TimerId = setInterval(() => {
+        $("#a3-time").textContent = Math.round((Date.now() - t0) / 1000) + "s";
+    }, 250);
 
-  $("#btnRun").addEventListener("click", function () {
-    showScreen("screen-run");
-    $("#actPill").textContent = "Act 3 · Run";
-    $("#hudTimerLbl").textContent = "Elapsed";
-    $("#hudCounterLbl").textContent = "Processed";
-    runBatchGame();
-  });
-
-  /* ================= ACT 3 : RUN ================= */
-  function renderQueue(topIndex) {
-    const stack = $("#queueStack");
-    stack.innerHTML = "";
-    const remaining = runBatch.length - topIndex;
-    const maxBacks = 8;
-    const backs = Math.min(Math.max(remaining - 1, 0), maxBacks);
-    for (let i = 0; i < backs; i++) {
-      const b = document.createElement("div");
-      b.className = "qback";
-      b.style.bottom = i * 5 + "px";
-      b.style.left = i * 2 + "px";
-      stack.appendChild(b);
+    function moveToken(targetEl) {
+        const g = grid.getBoundingClientRect(), r = targetEl.getBoundingClientRect();
+        token.style.left = (r.left - g.left + r.width / 2) + "px";
+        token.style.top  = (r.top  - g.top  + r.height / 2) + "px";
+        token.classList.remove("hidden");
     }
-    if (remaining > 0) {
-      const item = runBatch[topIndex];
-      const top = document.createElement("div");
-      top.className = "qtop";
-      top.style.bottom = backs * 5 + "px";
-      top.innerHTML =
-        '<div class="qname">' +
-        item.name +
-        '</div><div class="qplan ' +
-        (item.plan === "Premium" ? "pre" : "free") +
-        '">' +
-        item.plan +
-        "</div>";
-      stack.appendChild(top);
+    function lit(id) {
+        const n = $("#node-" + id);
+        n.classList.add("lit");
+        setTimeout(() => n.classList.remove("lit"), ACT3_STEP_MS * 0.4);
     }
-    $("#queueCount").textContent = remaining;
-  }
-
-  function runBatchGame() {
-    const pipeline = $("#pipeline");
-    const token = $("#token");
-    const queueStack = $("#queueStack");
-    const processedPile = $("#processedPile");
-    const nodes = {};
-    $$(".pipe-node").forEach((n) => (nodes[n.dataset.node] = n));
-    const runTimer = startTimer($("#mTime"));
-    let idx = 0,
-      done = 0;
-    processedPile.innerHTML = "";
-    renderQueue(0);
-    $("#mQueue").textContent = runBatch.length;
-    $("#mDone").textContent = "0/" + runBatch.length;
-    $("#processedCount").textContent = "0";
-    $("#log").innerHTML = "";
-    token.style.opacity = "0";
-
-    function rel(el) {
-      const c = pipeline.getBoundingClientRect();
-      const r = el.getBoundingClientRect();
-      return {
-        x: r.left - c.left + r.width / 2,
-        y: r.top - c.top + r.height / 2,
-      };
-    }
-    function moveTo(el) {
-      const p = rel(el);
-      token.style.left = p.x - token.offsetWidth / 2 + "px";
-      token.style.top = p.y - token.offsetHeight / 2 + "px";
-      token.style.opacity = "1";
-    }
-    function lit(node, on) {
-      node.classList.toggle("lit", on);
-    }
-    function clearLits() {
-      $$(".pipe-node").forEach((n) => n.classList.remove("lit"));
-    }
-    function logLine(html) {
-      const line = document.createElement("div");
-      line.innerHTML = html;
-      const log = $("#log");
-      log.insertBefore(line, log.firstChild);
-      while (log.children.length > 4) log.removeChild(log.lastChild);
-    }
-    function addProcessed(item) {
-      const chip = document.createElement("div");
-      chip.className = "pchip " + (item.plan === "Premium" ? "pre" : "free");
-      chip.textContent = item.name.split(" ")[0];
-      processedPile.appendChild(chip);
-      $("#processedCount").textContent = done;
+    function logLine(text, premium) {
+        const p = document.createElement("div");
+        if (premium) p.className = "premium-log";
+        p.textContent = text;
+        log.appendChild(p);
+        log.scrollTop = log.scrollHeight;
     }
 
-    function step() {
-      if (idx >= runBatch.length) {
-        finishRun();
-        return;
-      }
-      const item = runBatch[idx];
-      const isPrem = item.plan === "Premium";
-      // 1) pick up the top card from the queue
-      token.innerHTML =
-        item.name + '<span class="tk-plan">' + item.plan + "</span>";
-      clearLits();
-      moveTo(queueStack);
-      renderQueue(idx + 1); // queue now shows the NEXT card on top
-      $("#mQueue").textContent = runBatch.length - done;
-      // 2) travel through the flow
-      setTimeout(() => {
-        lit(nodes.trigger, true);
-        moveTo(nodes.trigger);
-      }, 140);
-      setTimeout(() => {
-        lit(nodes.trigger, false);
-        lit(nodes.crm, true);
-        moveTo(nodes.crm);
-        logLine(
-          "#" +
-            (idx + 1) +
-            ' <span class="ok">added to CRM</span> · <span class="' +
-            (isPrem ? "pre" : "free") +
-            '">' +
-            item.plan +
-            "</span>",
-        );
-      }, 320);
-      setTimeout(() => {
-        lit(nodes.crm, false);
-        lit(nodes.decision, true);
-        moveTo(nodes.decision);
-      }, 500);
-      setTimeout(() => {
-        lit(nodes.decision, false);
-        if (isPrem) {
-          lit(nodes.email, true);
-          moveTo(nodes.email);
-        } else {
-          moveTo(processedPile);
+    function step(i) {
+        if (runId !== currentRunId) return; // a newer run superseded this one
+        if (i >= queue.length) {
+            clearInterval(timerId);
+            state.botSeconds = Math.round((Date.now() - t0) / 1000);
+            setTimeout(showResults, 600);
+            return;
         }
-      }, 680);
-      // 3) drop into the processed pile
-      setTimeout(() => {
-        lit(nodes.email, false);
-        moveTo(processedPile);
-        done++;
-        addProcessed(item);
-        $("#mDone").textContent = done + "/" + runBatch.length;
-        $("#hudCounter").textContent = done + "/" + runBatch.length;
-        idx++;
-        token.style.opacity = "0"; // card "dropped in" — next card will be picked up
-        setTimeout(step, 220);
-      }, 880);
+        const s = queue[i];
+        const chip = queueStack.querySelector(`.q-chip[data-id="${i}"]`);
+        chip.classList.add("current");
+        lit("trigger"); moveToken($("#node-trigger")); // every item starts at the trigger
+
+        const u = ACT3_STEP_MS; // offsets below keep ~900 ms/item pace
+        setTimeout(() => { if (runId !== currentRunId) return; chip.remove(); $("#queue-count").textContent = `(${queue.length - i - 1})`; lit("crm"); moveToken($("#node-crm")); }, u * 0.15);
+        setTimeout(() => { if (runId !== currentRunId) return; lit("cond"); moveToken($("#node-cond")); }, u * 0.4);
+
+        if (s.plan === "Premium") {
+            setTimeout(() => {
+                if (runId !== currentRunId) return;
+                lit("email"); moveToken($("#node-email"));
+                state.emailsSent++; $("#a3-emails").textContent = state.emailsSent;
+            }, u * 0.65);
+            setTimeout(() => drop(i, s, `#${String(i+1).padStart(2,"0")} ${s.company} — Premium → CRM ✓ · welcome email ✓${state.tagPriority ? " · tagged priority" : ""}`), u * 0.9);
+        } else {
+            setTimeout(() => drop(i, s, `#${String(i+1).padStart(2,"0")} ${s.company} — ${s.plan} → CRM ✓`), u * 0.7);
+        }
+
+        function drop(idx, signup, text) {
+            if (runId !== currentRunId) return;
+            moveToken($(".processed-panel h3"));
+            const p = document.createElement("div");
+            p.className = "p-chip";
+            p.innerHTML = `${signup.name} <span class="plan plan-${signup.plan}">${signup.plan}</span>`;
+            pile.prepend(p);
+            $("#a3-done").textContent = idx + 1;
+            logLine(text, signup.plan === "Premium");
+            setTimeout(() => step(idx + 1), ACT3_STEP_MS * 0.1);
+        }
     }
-    setTimeout(step, 300);
 
-    function finishRun() {
-      stopTimer();
-      const t = fmt(runTimer.elapsed());
-      $("#mTime").textContent = t;
-      $("#hudTimer").textContent = t;
-      token.style.opacity = "0";
-      setTimeout(() => {
-        $("#rYouTime").textContent = manualTimer
-          ? fmt(manualTimer.elapsed())
-          : "0:00";
-        $("#rYouCount").textContent = manualCards.length + " processed";
-        $("#rYouErr").textContent =
-          mErrors + " error" + (mErrors === 1 ? "" : "s");
-        $("#rBotTime").textContent = t;
-        $("#rBotCount").textContent = runBatch.length + " processed";
-        $("#rBotErr").textContent = "0 errors";
-        $("#actPill").textContent = "Done";
-        showScreen("screen-results");
-      }, 700);
+    setTimeout(() => step(0), 400);
+}
+
+/* ================= RESULTS ================= */
+function showResults() {
+    const mN = manualCards, mT = state.manualSeconds, mE = state.manualErrors;
+    const bN = runBatch, bT = state.botSeconds;
+    $("#r-manual-n").textContent = mN;
+    $("#r-manual-time").textContent = mT + "s";
+    $("#r-manual-errors").textContent = mE;
+    $("#r-manual-per").textContent = (mT / mN).toFixed(1) + "s/record";
+    $("#r-bot-n").textContent = bN;
+    $("#r-bot-time").textContent = bT + "s";
+    $("#r-bot-per").textContent = (bT / bN).toFixed(1) + "s/record";
+
+    const speedup = bN / mN;
+    const projected = Math.round(mT * speedup);
+    $("#r-punchline").innerHTML =
+    `You did ${mN} records in ${mT}s${mE ? ` with ${mE} mistake${mE === 1 ? "" : "s"}` : ""}.
+    The bot did <b>${bN}</b> in <b>${bT}s</b>, error-free.
+    At your pace, ${bN} records would take about <b>${projected}s</b> — and you'd get bored.`;
+
+    // unlock results
+    const nav = document.getElementById("actnav");
+    if (!document.querySelector('.act-tab[data-act="results"]')) {
+        const tab = document.createElement("button");
+        tab.className = "act-tab"; tab.dataset.act = "results"; tab.textContent = "★ Results";
+        nav.appendChild(tab);
+        tab.addEventListener("click", () => showAct("results"));
     }
-  }
+    document.querySelector('.act-tab[data-act="results"]').disabled = false;
+    showAct("results");
+}
 
-  /* ================= flow control ================= */
-  $("#btnStart").addEventListener("click", function () {
-    mIndex = 0;
-    mErrors = 0;
-    mFilled = 0;
-    showScreen("screen-manual");
-    $("#actPill").textContent = "Act 1 · Manual";
-    $("#hudTimerLbl").textContent = "Time";
-    $("#hudCounterLbl").textContent = "Progress";
-    $("#manualDone").style.display = "none";
-    buildManualCard();
-    updateManualHUD();
-    manualTimer = startTimer($("#hudTimer"));
-  });
+$("#restart").addEventListener("click", () => location.reload());
 
-  $("#btnAgain").addEventListener("click", function () {
-    const pal = $("#palette");
-    $$(".placed-block").forEach((b) => {
-      pal.appendChild(b);
-      b.classList.remove("placed-block");
-      b.style.cursor = "grab";
-    });
-    $$("#palette .cond-field").forEach((s) => (s.selectedIndex = 0));
-    $$("#palette .cond-value").forEach((s) => (s.selectedIndex = 0));
-    $$(".zone").forEach((z) => z.classList.remove("satisfied"));
-    $("#btnRun").disabled = true;
-    $("#runHint").textContent = "Place the blocks to enable the run.";
-    $("#processedPile").innerHTML = "";
-    $("#mQueue").textContent = "30";
-    $("#mDone").textContent = "0/30";
-    $("#mErr").textContent = "0";
-    $("#mTime").textContent = "0:00";
-    $("#log").innerHTML = "";
-    $("#actPill").textContent = "Intro";
-    $("#hudTimer").textContent = "0:00";
-    $("#hudCounter").textContent = "—";
-    showScreen("screen-intro");
-  });
-})();
+/* ================= BOOT ================= */
+initAct1();
+initAct2(); // registers Act 2 drag handlers + Run button — without this, Act 2 is inert

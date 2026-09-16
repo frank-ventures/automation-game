@@ -1,327 +1,166 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en-GB">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Queue Zero — an automation game</title>
-    <script src="app.js" defer></script>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <div id="app">
-      <header>
-        <div class="brand"><span class="dot"></span>Queue Zero</div>
-        <div class="act-pill" id="actPill">Intro</div>
-        <div class="hud">
-          <div class="stat">
-            <span class="lbl" id="hudTimerLbl">Time</span
-            ><span id="hudTimer">0:00</span>
-          </div>
-          <div class="stat">
-            <span class="lbl" id="hudCounterLbl">Progress</span
-            ><span id="hudCounter">—</span>
-          </div>
-        </div>
-      </header>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Automate It! — Learn Automation by Doing</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
 
-      <main>
-        <!-- INTRO -->
-        <section id="screen-intro" class="screen active">
-          <div class="intro">
-            <h1>Queue Zero</h1>
-            <p class="tag">
-              A hands-on look at automation —
-              <b>Trigger → Condition → Action</b>
-            </p>
-            <p
-              style="
-                color: var(--muted);
-                max-width: 560px;
-                margin: 0 auto;
-                line-height: 1.6;
-              "
-            >
-              You're a knowledge worker with an endless queue of new sign-ups to
-              process. First you'll do it <b>the manual way</b>. Then you'll
-              <b>build the automation</b> that does it for you. Watch what
-              happens to the queue.
-            </p>
-            <div class="acts">
-              <div class="act-card">
-                <div class="n" style="background: var(--amber)">1</div>
-                <h3>Do it by hand</h3>
-                <p>
-                  Key each sign-up into the CRM yourself. Notice how it piles up
-                  and how easy it is to slip.
-                </p>
-              </div>
-              <div class="act-card">
-                <div class="n" style="background: var(--primary)">2</div>
-                <h3>Build the automation</h3>
-                <p>
-                  Drag a Trigger, a Condition and Actions into a flow. This is
-                  the Input → Process → Output.
-                </p>
-              </div>
-              <div class="act-card">
-                <div class="n" style="background: var(--green)">3</div>
-                <h3>Watch it run</h3>
-                <p>
-                  Watch the bot pull every name off the queue, run it through
-                  your flow, and pile it into the processed box.
-                </p>
-              </div>
-            </div>
-            <button class="big-btn" id="btnStart">
-              Start — do it by hand →
-            </button>
-            <p class="note">Mouse / touch only · about 3–5 minutes</p>
-          </div>
-        </section>
+<header>
+  <h1>Automate It!</h1>
+  <p class="tagline">This is <b>automation</b>, not AI — a bot follows rules you define.
+     Core pattern: <b>Trigger → Condition → Action</b> · <b>Input → Process → Output</b></p>
+  <nav id="actnav">
+    <button class="act-tab active" data-act="act1">1 · Do it manually</button>
+    <button class="act-tab" data-act="act2" disabled>2 · Build the flow</button>
+    <button class="act-tab" data-act="act3" disabled>3 · Let it run</button>
+  </nav>
+</header>
 
-        <!-- ACT 1 MANUAL -->
-        <section id="screen-manual" class="screen">
-          <div class="instr" id="manualInstr">
-            <b>Manual mode.</b> The fields come through in a
-            <b>random order</b> each time — read each one and drag it into the
-            <b>matching</b> slot on the CRM form, then click <b>Save to CRM</b>.
-            Premium sign-ups also need a <b>welcome email</b> sent. Watch the
-            timer and the error count.
-          </div>
-          <div class="two-col">
-            <div class="card-panel">
-              <div class="sc-head" id="cardCounter">Card 1 of 5</div>
-              <div class="signup-card">
-                <div class="sc-head">New sign-up</div>
-                <div class="chips" id="chipArea"></div>
-              </div>
-              <div class="stack" id="stackHint"></div>
-            </div>
-            <div class="card-panel form-panel">
-              <h3>Customer CRM</h3>
-              <div class="form-sub">Fill each field from the card</div>
-              <div id="slotArea"></div>
-              <button class="btn save" id="btnSave" disabled>
-                Save to CRM
-              </button>
-              <button class="btn email" id="btnEmail">
-                ✉ Send welcome email
-              </button>
-            </div>
-          </div>
-          <div
-            id="manualDone"
-            class="card-panel center"
-            style="display: none; margin-top: 18px"
-          >
-            <h2 style="margin: 6px 0">Manual phase complete</h2>
-            <p
-              style="color: var(--muted); margin: 6px 0 16px"
-              id="manualDoneText"
-            ></p>
-            <button class="big-btn" id="btnToBuild">
-              Build the automation →
-            </button>
-          </div>
-        </section>
+<main>
 
-        <!-- ACT 2 BUILD -->
-        <section id="screen-build" class="screen">
-          <div class="instr">
-            <b>Build the automation.</b> Drag blocks from the palette into the
-            flow so that: <b>every</b> sign-up is added to the CRM, and
-            <b>Premium</b> sign-ups <i>also</i> get a welcome email and a
-            Priority tag. Set the condition so it only fires for the right plan.
-            (There's a distractor block — you don't need it.)
-          </div>
-          <div class="card-panel">
-            <div class="flow">
-              <div class="node trigger">
-                <span class="nk">Trigger</span>When a new sign-up form is
-                submitted
-              </div>
-              <div class="arrow">→</div>
-              <div
-                class="zone"
-                id="zoneMain"
-                data-dropzone
-                data-accept="add-crm"
-                data-cap="1"
-              >
-                <span class="zlabel">Action · every item</span
-                ><span class="zcheck">✓</span>
-              </div>
-              <div class="arrow">→</div>
-              <div
-                class="zone"
-                id="zoneCond"
-                data-dropzone
-                data-accept="condition"
-                data-cap="1"
-              >
-                <span class="zlabel">Condition</span
-                ><span class="zcheck">✓</span>
-              </div>
-              <div class="arrow">→</div>
-              <div
-                class="zone"
-                id="zonePrem"
-                data-dropzone
-                data-accept="send-email,tag-priority"
-                data-cap="2"
-              >
-                <span class="zlabel">If true</span><span class="zcheck">✓</span>
-              </div>
-            </div>
+  <!-- ================= ACT 1 ================= -->
+  <section id="act1" class="act active">
+    <h2>Act 1 — Process sign-ups by hand</h2>
+    <p class="lede">Drag each field chip into the matching CRM slot, then save.
+       <b>Premium</b> sign-ups also need a welcome email before you can save. Feel the tedium — that's the point.</p>
 
-            <div class="palette" id="palette">
-              <div class="plabel">Block palette — drag into the flow</div>
-              <div class="block action" data-type="add-crm">
-                <span class="btag">ACTION</span>Add to CRM
-              </div>
-              <div class="block condition" data-type="condition">
-                <span class="btag">IF</span>
-                <select class="cond-field">
-                  <option>Plan</option>
-                  <option>Company</option>
-                  <option>Email</option>
-                  <option>Name</option>
-                </select>
-                <span>=</span>
-                <select class="cond-value">
-                  <option value="">—</option>
-                  <option>Premium</option>
-                  <option>Free</option>
-                  <option>Acme Corp</option>
-                </select>
-              </div>
-              <div class="block action" data-type="send-email">
-                <span class="btag">ACTION</span>Send welcome email
-              </div>
-              <div class="block action" data-type="tag-priority">
-                <span class="btag">ACTION</span>Tag “Priority”
-              </div>
-              <div class="block distractor" data-type="archive">
-                <span class="btag">ACTION</span>Archive form
-              </div>
-            </div>
-
-            <div class="runbar">
-              <button class="big-btn" id="btnRun" disabled>
-                Run the bot →
-              </button>
-              <div class="runhint" id="runHint">
-                Place the blocks to enable the run.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ACT 3 RUN -->
-        <section id="screen-run" class="screen">
-          <div class="instr" style="margin-bottom: 12px">
-            <b>The bot is live.</b> It pulls each name off the <b>queue</b>,
-            runs it through your flow, and drops it into the
-            <b>processed</b> pile. Watch the queue empty.
-          </div>
-          <div class="card-panel">
-            <div class="pipeline" id="pipeline">
-              <div id="token">Waiting…</div>
-
-              <div class="stack-wrap">
-                <div class="stack-title">Queue</div>
-                <div class="queue-stack" id="queueStack"></div>
-                <div class="stack-count" id="queueCount">30</div>
-              </div>
-
-              <div class="pipe-flow">
-                <div class="pipe-node trigger" data-node="trigger">
-                  <span class="pk">Trigger</span>New form
-                </div>
-                <div class="pipe-arrow">→</div>
-                <div class="pipe-node crm" data-node="crm">
-                  <span class="pk">Action</span>Add to CRM
-                </div>
-                <div class="pipe-arrow">→</div>
-                <div class="pipe-node decision" data-node="decision">
-                  <span class="pk">Condition</span>Plan = Premium?
-                </div>
-                <div class="pipe-arrow">→</div>
-                <div class="pipe-node email" data-node="email">
-                  <span class="pk">If true</span>Email · Tag
-                </div>
-              </div>
-
-              <div class="stack-wrap">
-                <div class="stack-title">Processed</div>
-                <div class="processed-pile" id="processedPile"></div>
-                <div class="stack-count" id="processedCount">0</div>
-              </div>
-            </div>
-            <div class="run-metrics">
-              <div class="m">
-                <div class="v" id="mQueue">30</div>
-                <div class="l">In queue</div>
-              </div>
-              <div class="m">
-                <div class="v" id="mDone">0/30</div>
-                <div class="l">Processed</div>
-              </div>
-              <div class="m">
-                <div class="v" id="mErr">0</div>
-                <div class="l">Errors</div>
-              </div>
-              <div class="m">
-                <div class="v" id="mTime">0:00</div>
-                <div class="l">Elapsed</div>
-              </div>
-            </div>
-            <div id="log"></div>
-          </div>
-        </section>
-
-        <!-- RESULTS -->
-        <section id="screen-results" class="screen">
-          <div class="results">
-            <div class="card-panel center">
-              <h2 style="margin: 6px 0">Queue: zero.</h2>
-              <p style="color: var(--muted); margin: 4px 0 0">
-                Same task, two ways.
-              </p>
-            </div>
-            <div class="vs">
-              <div class="col you">
-                <h3>You — manual</h3>
-                <div class="big" id="rYouTime">0:00</div>
-                <div class="row" id="rYouCount">5 processed</div>
-                <div class="row" id="rYouErr">0 errors</div>
-              </div>
-              <div class="mid">vs</div>
-              <div class="col bot">
-                <h3>The bot — automated</h3>
-                <div class="big" id="rBotTime">0:00</div>
-                <div class="row" id="rBotCount">30 processed</div>
-                <div class="row" id="rBotErr">0 errors</div>
-              </div>
-            </div>
-            <div class="recap">
-              <b>What just happened:</b> the incoming form was the <b>input</b>,
-              the flow you built was the <b>process</b>, and the CRM record +
-              email were the <b>output</b>. You replaced a repetitive human
-              action with a system that <b>senses</b> the trigger, applies a
-              <b>condition</b>, and fires the right <b>action</b> — every single
-              time, without getting tired or making slips.
-              <div class="ipo">
-                <span>Trigger → Condition → Action</span>
-                <span>Input → Process → Output</span>
-              </div>
-            </div>
-            <div class="center" style="margin-top: 20px">
-              <button class="big-btn" id="btnAgain">Play again</button>
-            </div>
-          </div>
-        </section>
-      </main>
+    <div class="hud">
+      <span>⏱ Time: <b id="a1-time">0s</b></span>
+      <span>❌ Errors: <b id="a1-errors">0</b></span>
+      <span>📇 Card: <b id="a1-card">1</b> / <b id="a1-total">5</b></span>
     </div>
-  </body>
+
+    <div class="manual-grid">
+      <div class="panel">
+        <h3>Sign-up form</h3>
+        <div id="a1-chips" class="chip-area"></div>
+        <p class="hint">Fields arrive in random order — stay sharp.</p>
+      </div>
+      <div class="panel">
+        <h3>CRM record</h3>
+        <div id="a1-slots"></div>
+        <div class="a1-actions">
+          <button id="a1-email" class="btn warn" disabled>📧 Send welcome email</button>
+          <button id="a1-save" class="btn primary" disabled>💾 Save record</button>
+        </div>
+        <p id="a1-premium-flag" class="premium-flag hidden">⭐ Premium sign-up — welcome email required!</p>
+      </div>
+    </div>
+
+    <div id="a1-done" class="panel hidden"></div>
+  </section>
+
+  <!-- ================= ACT 2 ================= -->
+  <section id="act2" class="act">
+    <h2>Act 2 — Build the automation</h2>
+    <p class="lede">Drag the blocks into the flow so the bot can process sign-ups without you.
+       The condition is <b>Plan = Premium?</b>. One block here doesn't belong — leave it out.</p>
+
+    <div class="build-grid">
+      <div class="panel">
+        <h3>Blocks</h3>
+        <div id="palette">
+          <div class="block" data-block="add-crm">➕ Add to CRM</div>
+          <div class="block" data-block="condition">🔀 Condition: Plan = Premium?</div>
+          <div class="block" data-block="email">📧 Send welcome email</div>
+          <div class="block" data-block="tag">🏷 Tag Priority</div>
+          <div class="block distractor" data-block="archive">🗄 Archive form</div>
+        </div>
+        <p class="hint">Click a placed block to remove it.</p>
+      </div>
+
+      <div class="panel flow-panel">
+        <h3>Flow builder</h3>
+        <div class="trigger-node" id="flow-trigger">⚡ TRIGGER: New sign-up form submitted</div>
+        <div class="arrow">↓ fires for every new sign-up</div>
+        <div class="zone-label">Main path</div>
+        <div class="zone" id="zone-main" data-dropzone="main">
+          <span class="zone-hint">Drop main-path blocks here</span>
+        </div>
+        <div class="branch-line">↓ if TRUE (Premium)</div>
+        <div class="zone iftrue" id="zone-iftrue" data-dropzone="iftrue">
+          <span class="zone-hint">If TRUE — drop actions here</span>
+        </div>
+        <div id="a2-validation" class="validation"></div>
+        <button id="a2-run" class="btn primary" disabled>▶ Run the bot</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ACT 3 ================= -->
+  <section id="act3" class="act">
+    <h2>Act 3 — Watch the bot work</h2>
+    <p class="lede">The queue thins on the left, each record runs through the flow in the middle
+       (Premium detours through the email node), and the processed pile grows on the right.</p>
+
+    <div class="hud">
+      <span>⏱ Elapsed: <b id="a3-time">0s</b></span>
+      <span>✅ Processed: <b id="a3-done">0</b></span>
+      <span>📧 Emails sent: <b id="a3-emails">0</b></span>
+      <span>❌ Errors: <b>0</b></span>
+    </div>
+
+    <div class="run-grid" id="run-grid">
+      <div class="panel queue-panel">
+        <h3>Queue <span id="queue-count" class="count-badge"></span></h3>
+        <div id="queue-stack"></div>
+      </div>
+      <div class="panel pipeline-panel">
+        <h3>The flow</h3>
+        <div class="node trigger-node" id="node-trigger">⚡ TRIGGER: New sign-up form submitted</div>
+        <div class="arrow">↓</div>
+        <div class="node" id="node-crm">➕ Add to CRM</div>
+        <div class="arrow">↓</div>
+        <div class="node" id="node-cond">🔀 Plan = Premium?</div>
+        <div class="arrow branch-arrow">if TRUE ↓</div>
+        <div class="node email-node" id="node-email">📧 Send welcome email</div>
+      </div>
+      <div class="panel processed-panel">
+        <h3>Processed <span id="done-count" class="count-badge"></span></h3>
+        <div id="processed-pile"></div>
+      </div>
+      <div id="token" class="hidden">📄</div>
+    </div>
+
+    <div class="panel">
+      <h3>Activity log</h3>
+      <div id="log"></div>
+    </div>
+  </section>
+
+  <!-- ================= RESULTS ================= -->
+  <section id="results" class="act">
+    <h2>Results — you vs. the bot</h2>
+    <div class="panel">
+      <table id="compare-table">
+        <tr><th></th><th>🧑 You (manual)</th><th>🤖 The bot</th></tr>
+        <tr><td>Records</td><td id="r-manual-n">—</td><td id="r-bot-n">—</td></tr>
+        <tr><td>Time</td><td id="r-manual-time">—</td><td id="r-bot-time">—</td></tr>
+        <tr><td>Errors</td><td id="r-manual-errors">—</td><td>0</td></tr>
+        <tr><td>Per record</td><td id="r-manual-per">—</td><td id="r-bot-per">—</td></tr>
+      </table>
+      <p id="r-punchline"></p>
+      <p class="note">The bot isn't smarter than you — it just follows a rule you built.
+         That's <b>automation</b>: no guessing, no learning, no AI. Just <b>Trigger → Condition → Action</b>.</p>
+    </div>
+
+    <div class="panel recap">
+      <h3>What you actually built</h3>
+      <div class="chain"><span class="step trigger">TRIGGER</span> new sign-up form submitted
+        → <span class="step condition">CONDITION</span> Plan = Premium?
+        → <span class="step action">ACTION</span> add to CRM · send welcome email</div>
+      <div class="chain"><span class="step input">INPUT</span> name, email, company, plan
+        → <span class="step process">PROCESS</span> flow rules (branch on plan)
+        → <span class="step output">OUTPUT</span> updated CRM + emails sent</div>
+      <button id="restart" class="btn primary">↻ Play again</button>
+    </div>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
 </html>
